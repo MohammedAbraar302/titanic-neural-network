@@ -33,7 +33,7 @@ if st.button("🔮 Send Request to API", type="primary", use_container_width=Tru
     
     try:
         # Call the local FastAPI server
-        response = requests.post("http://127.0.0.1:8000/predict", json=payload)
+        response = requests.post("https://titanic-neural-network.onrender.com/predict", json=payload)
         
         if response.status_code == 200:
             res_json = response.json()
