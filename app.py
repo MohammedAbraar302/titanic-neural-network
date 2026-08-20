@@ -1,51 +1,40 @@
 import streamlit as st
-import requests
+import pandas as pd
+import numpy as np
+import joblib
 
-st.set_page_config(page_title="Titanic Deep Learning Studio", layout="centered")
+st.set_page_config(page_title="Titanic Survival Predictor", page_icon="🚢", layout="centered")
 
-st.title("🚢 Titanic Neural Network Deployed App")
-st.markdown("This interface sends custom inputs to your local **FastAPI backend**, which runs inference using a **Neural Network** trained over 50 epochs.")
+st.title("🚢 Titanic Survival Predictor")
+st.write("Enter passenger details below to check prediction probabilities using the trained neural network model.")
 
-st.markdown("---")
+# Load the trained model bundle
+@st.cache_resource
+def load_bundle():
+    bundle = joblib.load("models/titanic_nn_model.pkl")
+    return bundle["model"], bundle["scaler"], bundle["features"]
 
-col1, col2 = st.columns(2)
+model, scaler, features = load_bundle()
 
-with col1:
-    pclass = st.selectbox("Passenger Class (Pclass)", [1, 2, 3])
-    sex_label = st.selectbox("Sex", ["Male", "Female"])
-    sex = 0 if sex_label == "Male" else 1
-    age = st.slider("Age", 0.0, 80.0, 28.0)
+# UI Inputs
+st.subheader("Passenger Information")
+pclass = st.selectbox("Ticket Class (Pclass)", [1, 2, 3], format_func=lambda x: f"Class {x}")
+sex_input = st.selectbox("Sex", ["Male", "Female"])
+sex = 1 if sex_input == "Female" else 0
+age = st.slider("Age", 1.0, 80.0, 28.0)
+sibsp = st.selectbox("Siblings/Spouses Aboard", [0, 1, 2, 3, 4, 5, 6, 7, 8])
+parch = st.selectbox("Parents/Children Aboard", [0, 1, 2, 3, 4, 5])
+fare = st.slider("Fare Paid (£)", 0.0, 500.0, 32.0)
 
-with col2:
-    sibsp = st.number_input("Siblings / Spouses Aboard (SibSp)", 0, 8, 0)
-    parch = st.number_input("Parents / Children Aboard (Parch)", 0, 6, 0)
-    fare = st.number_input("Ticket Fare ($)", 0.0, 500.0, 32.2)
-
-if st.button("🔮 Send Request to API", type="primary", use_container_width=True):
-    payload = {
-        "Pclass": int(pclass),
-        "Sex": int(sex),
-        "Age": float(age),
-        "SibSp": int(sibsp),
-        "Parch": int(parch),
-        "Fare": float(fare)
-    }
+if st.button("Predict Survival", type="primary"):
+    input_data = pd.DataFrame([[pclass, sex, age, sibsp, parch, fare]], columns=features)
+    scaled_input = scaler.transform(input_data)
+    prediction = int(model.predict(scaled_input)[0])
+    probability = float(np.max(model.predict_proba(scaled_input)))
     
-    try:
-        # Call the local FastAPI server
-        response = requests.post("https://titanic-neural-network-2.onrender.com/predict", json=payload)
-        
-        if response.status_code == 200:
-            res_json = response.json()
-            outcome = res_json["result"]
-            conf = res_json["confidence"]
-            
-            st.markdown("### API Response Result:")
-            if res_json["prediction_code"] == 1:
-                st.success(f"🟢 **{outcome}** (Confidence: {conf}%)")
-            else:
-                st.error(f"🔴 **{outcome}** (Confidence: {conf}%)")
-        else:
-            st.error("The API returned an unexpected response code.")
-    except Exception as e:
-        st.error(f"⚠️ Connection error. Make sure FastAPI is running. Details: {e}")
+    result = "Survived" if prediction == 1 else "Did Not Survive"
+    
+    if prediction == 1:
+        st.success(f"🎉 **Survived!** (Confidence: {probability * 100:.2f}%)")
+    else:
+        st.error(f"⚠️ **Did not survive.** (Confidence: {probability * 100:.2f}%)")
