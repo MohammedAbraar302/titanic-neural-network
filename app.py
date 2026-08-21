@@ -1,20 +1,15 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
-import joblib
+import requests
+import os
 
 st.set_page_config(page_title="Titanic Survival Predictor", page_icon="🚢", layout="centered")
 
 st.title("🚢 Titanic Survival Predictor")
 st.write("Enter passenger details below to check prediction probabilities using the trained neural network model.")
 
-# Load the trained model bundle
-@st.cache_resource
-def load_bundle():
-    bundle = joblib.load("models/titanic_nn_model.pkl")
-    return bundle["model"], bundle["scaler"], bundle["features"]
-
-model, scaler, features = load_bundle()
+API_URL = os.getenv("API_URL", "http://localhost:8000")
 
 # UI Inputs
 st.subheader("Passenger Information")
@@ -27,14 +22,29 @@ parch = st.selectbox("Parents/Children Aboard", [0, 1, 2, 3, 4, 5])
 fare = st.slider("Fare Paid (£)", 0.0, 500.0, 32.0)
 
 if st.button("Predict Survival", type="primary"):
-    input_data = pd.DataFrame([[pclass, sex, age, sibsp, parch, fare]], columns=features)
-    scaled_input = scaler.transform(input_data)
-    prediction = int(model.predict(scaled_input)[0])
-    probability = float(np.max(model.predict_proba(scaled_input)))
+    payload = {
+        "Pclass": pclass,
+        "Sex": sex,
+        "Age": age,
+        "SibSp": sibsp,
+        "Parch": parch,
+        "Fare": fare
+    }
     
-    result = "Survived" if prediction == 1 else "Did Not Survive"
-    
-    if prediction == 1:
-        st.success(f"🎉 **Survived!** (Confidence: {probability * 100:.2f}%)")
-    else:
-        st.error(f"⚠️ **Did not survive.** (Confidence: {probability * 100:.2f}%)")
+    try:
+        response = requests.post(f"{API_URL}/predict", json=payload, timeout=10)
+        response.raise_for_status()
+        result = response.json()
+        
+        prediction = result["prediction_code"]
+        probability = result["confidence"] / 100
+        result_text = result["result"]
+        
+        if prediction == 1:
+            st.success(f"🎉 **Survived!** (Confidence: {probability * 100:.2f}%)")
+        else:
+            st.error(f"⚠️ **Did not survive.** (Confidence: {probability * 100:.2f}%)")
+            
+    except requests.exceptions.RequestException as e:
+        st.error(f"API Error: {e}")
+        st.info(f"Make sure the API is running at {API_URL}")
